@@ -4,7 +4,7 @@ Information-Bottleneck guided mixed-precision quantization for LLMs.
 
 ## Key Finding
 
-**KL-divergence sensitivity varies 121× across Llama 3.1 8B's 32 layers.** Layer 0 dominates at 4.2× while mid-layers sit at ~0.1×. Uniform quantization ignores this; IB-guided allocation exploits it.
+**KL-divergence sensitivity varies 121× across Llama 3.1 8B's 32 layers.** Layer 0 dominates at 4.2× while mid-layers sit at ~0.1×. Uniform quantization ignores this; sensitivity-guided bit allocation exploits it.
 
 ## The Problem: Silent Degradation
 
@@ -15,9 +15,10 @@ Standard metrics (perplexity, accuracy) stay stable while token-distribution KL 
 | Component | Status |
 |-----------|--------|
 | Silent degradation discovery | ✅ Validated |
-| 121× layer-sensitivity map | ✅ Validated on Llama 3.1 8B |
-| β-score allocation algorithm | ⚠️ Bug found — see below |
-| GPTQ/AWQ baseline comparison | ❌ Not yet run |
+| 121× layer-sensitivity map | ✅ Validated on Llama 3.1 8B; replicates on GPT-2 at n=500 |
+| IB information-plane term | ❌ No signal beyond KL sensitivity (GPT-2, n=500) |
+| IB rerun at Llama 3.1 8B scale | ⏳ Open |
+| GPTQ/AWQ baseline comparison | ❌ Not run |
 
 ### Critical Bug Found (Sept 2026)
 
@@ -34,7 +35,17 @@ mutual_information(X, Y, n_bins=5)  # with n=20 samples
 - Adaptive bin count when using histogram
 - Mandatory shuffle noise floor — if not 2σ above shuffle baseline, treat as zero
 
-**Next step:** Rerun Stage 2 with the fixed estimator and 500+ calibration samples.
+### Rerun result (Sept 2026)
+
+Stage 2 was rerun on GPT-2 at n=500 with the corrected KSG estimator and a pre-registered three-check rule (MI significance ≥ 50%, |spearman(d, s)| < 0.90, α* < 1.0 winning on ≥ 2 of 3 bit targets).
+
+- MI significance: 38% against the 50% bar
+- α* = 1.0 at 2 of 3 bit targets
+- Displacement shrank in step with the noise floor as n rose
+
+**Conclusion:** the information-plane term adds no allocation signal beyond raw KL sensitivity. At α = 1.0 the β score equals KL sensitivity, so IB-allocated and sensitivity-allocated models are identical. The KL sensitivity map itself replicates (layer 0 ≈ 5× the next layer on GPT-2).
+
+`displacement_ratio` in `results/llama31_results.json` comes from the old estimator and is superseded.
 
 ## Repository Structure
 
@@ -103,18 +114,17 @@ Open `notebooks/llama31_ib_complete_pipeline.ipynb` and set your HuggingFace tok
 | Llama 3.1 8B | FP32 Baseline | 32 | 54.5% | 8.9 | — |
 | Llama 3.1 8B | Uniform INT8 | 8 | 56.0% | 9.7 | baseline |
 | Llama 3.1 8B | Random 7-bit | 7 | 35.0% | — | — |
-| Llama 3.1 8B | **IB-7bit** | 7 | **46.5%** | **42.3** | **lowest** |
+| Llama 3.1 8B | **KL-sensitivity 7-bit** (IB at α=1.0) | 7 | **46.5%** | **42.3** | **lowest** |
 | Llama 3.1 8B | Uniform INT4 | 4 | 23.0% | 1,007,348 | extreme |
 
-> **Read by matched bit-budget.** INT8 beats IB-7bit because it uses more bits — not a fair comparison. At matched 7-bit budget, IB allocation beats random by 11.5 points.
+> **Not compared against GPTQ or AWQ.** KL-sensitivity bit allocation also appears in concurrent 2025–26 work, so this result is a replication, not a new method.
 
 > **Not yet compared against GPTQ or AWQ.** That's the next step after fixing the MI estimator.
 
 ## Planned Work
 
-1. **Rerun Stage 2 with fixed MI estimator** — use `estimate_mi()` from `scripts/mi_estimator.py` with 500+ samples
-2. **Redo α sweep** — check if α moves off 1.0 now that the plane term isn't garbage
-3. **GPTQ/AWQ comparison (Framing B)** — use β-scores to *allocate* bitwidths with GPTQ as the underlying quantizer, not compete against it
+1. **Rerun the corrected estimator on Llama 3.1 8B** to close the one open gap before calling the IB result final.
+2. **Grouped int4 quantizer** (hand-written, per-group) to check that the allocation result survives a non-naive int4 baseline.
 
 ## Citation
 
