@@ -117,9 +117,10 @@ Open `notebooks/llama31_ib_complete_pipeline.ipynb` and set your HuggingFace tok
 | Llama 3.1 8B | **KL-sensitivity 7-bit** (IB at α=1.0) | 7 | **46.5%** | **42.3** | **lowest** |
 | Llama 3.1 8B | Uniform INT4 | 4 | 23.0% | 1,007,348 | extreme |
 
+> **Read by matched bit-budget.** INT8 beats this row because it uses more bits, so that comparison isn't fair. At a matched 7-bit budget, KL-sensitivity allocation beats random by 11.5 points.
+
 > **Not compared against GPTQ or AWQ.** KL-sensitivity bit allocation also appears in concurrent 2025–26 work, so this result is a replication, not a new method.
 
-> **Not yet compared against GPTQ or AWQ.** That's the next step after fixing the MI estimator.
 
 ## Planned Work
 
